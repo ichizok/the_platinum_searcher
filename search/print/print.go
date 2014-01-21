@@ -13,6 +13,40 @@ const (
 	ColorMatch      = "\x1b[30;43m" /* black with yellow background */
 )
 
+type Modifier interface {
+	Path(path string) string
+	LineNumber(lineNum int) string
+	Match(pattern, match string) string
+}
+
+type Plain struct {}
+
+func (m *Plain) Path(path string) string {
+	return path
+}
+
+func (m *Plain) LineNumber(lineNum int) string {
+	return fmt.Sprintf("%d:", lineNum)
+}
+
+func (m *Plain) Match(pattern, match string) string {
+	return match
+}
+
+type Color struct {}
+
+func (m *Color) Path(path string) string {
+	return ColorPath + path + ColorReset
+}
+
+func (m *Color) LineNumber(lineNum int) string {
+	return ColorLineNumber + fmt.Sprintf("%d", lineNum) + ColorReset + ":"
+}
+
+func (m *Color) Match(pattern, match string) string {
+	return strings.Replace(match, pattern, ColorMatch + pattern + ColorReset, -1)
+}
+
 type Match struct {
 	LineNum int
 	Match   string
@@ -31,60 +65,42 @@ type Printer struct {
 }
 
 func (self *Printer) Print() {
+	var modifier Modifier
+	if self.Option.NoColor {
+		modifier = &Plain{}
+	} else {
+		modifier = &Color{}
+	}
+
 	for arg := range self.In {
 
 		if len(arg.Matches) == 0 {
 			continue
 		}
 
+		path := modifier.Path(arg.Path)
 		if self.Option.FilesWithMatches {
-			self.printPath(arg.Path)
-			fmt.Println()
+			fmt.Println(path)
 			continue
 		}
-		if !self.Option.NoGroup {
-			self.printPath(arg.Path)
-			fmt.Println()
+		if self.Option.NoGroup {
+			path += ":"
+		} else {
+			fmt.Println(path)
+			path = ""
 		}
+
 		for _, v := range arg.Matches {
 			if v == nil {
 				continue
 			}
-			if self.Option.NoGroup {
-				self.printPath(arg.Path)
-			}
-			self.printLineNumber(v.LineNum)
-			self.printMatch(arg.Pattern, v.Match)
-			fmt.Println()
+			fmt.Print(path)
+			fmt.Print(modifier.LineNumber(v.LineNum))
+			fmt.Println(modifier.Match(arg.Pattern, v.Match))
 		}
 		if !self.Option.NoGroup {
 			fmt.Println()
 		}
 	}
 	self.Done <- true
-}
-
-func (self *Printer) printPath(path string) {
-	if self.Option.NoColor {
-		fmt.Printf("%s", path)
-	} else {
-		fmt.Printf("%s%s%s", ColorPath, path, ColorReset)
-	}
-	if !self.Option.FilesWithMatches {
-		fmt.Printf(":")
-	}
-}
-func (self *Printer) printLineNumber(lineNum int) {
-	if self.Option.NoColor {
-		fmt.Printf("%d:", lineNum)
-	} else {
-		fmt.Printf("%s%d%s:", ColorLineNumber, lineNum, ColorReset)
-	}
-}
-func (self *Printer) printMatch(pattern, match string) {
-	if self.Option.NoColor {
-		fmt.Printf("%s", match)
-	} else {
-		fmt.Printf("%s", strings.Replace(match, pattern, ColorMatch+pattern+ColorReset, -1))
-	}
 }
